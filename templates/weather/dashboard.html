@@ -1,0 +1,134 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UK Met Office Climate Dashboard</title>
+    <link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js" defer></script>
+</head>
+<body>
+    <header class="site-header">
+        <div>
+            <h1>UK Climate Summaries</h1>
+            <p>Live overview of Met Office HadUK-Grid temperature, rainfall, sunshine and frost time-series.</p>
+        </div>
+        <div class="header-meta">
+            <a href="https://www.metoffice.gov.uk/research/climate/maps-and-data/uk-and-regional-series#yearOr" target="_blank" rel="noreferrer">
+                Source &rarr;
+            </a>
+        </div>
+    </header>
+
+    <main>
+        <section class="controls card">
+            <label>
+                Region
+                <select id="regionSelect">
+                    {% for region in regions %}
+                        <option value="{{ region.code }}">{{ region.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>
+                Parameter
+                <select id="parameterSelect">
+                    {% for param in parameters %}
+                        <option value="{{ param.code }}">{{ param.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>
+                Period Type
+                <select id="periodTypeSelect">
+                    <option value="month">Monthly</option>
+                    <option value="season">Seasonal</option>
+                    <option value="annual">Annual</option>
+                </select>
+            </label>
+            <label>
+                Start Year
+                <input id="startYearInput" type="number" min="1850" max="2100" placeholder="Optional">
+            </label>
+            <label>
+                End Year
+                <input id="endYearInput" type="number" min="1850" max="2100" placeholder="Optional">
+            </label>
+            <button id="refreshButton" class="primary">Refresh</button>
+        </section>
+
+        <section class="summary-grid">
+            <div class="card">
+                <p class="label">Data points</p>
+                <p id="summaryCount" class="value">-</p>
+            </div>
+            <div class="card">
+                <p class="label">Min</p>
+                <p id="summaryMin" class="value">-</p>
+            </div>
+            <div class="card">
+                <p class="label">Max</p>
+                <p id="summaryMax" class="value">-</p>
+            </div>
+            <div class="card">
+                <p class="label">Average</p>
+                <p id="summaryAvg" class="value">-</p>
+            </div>
+        </section>
+
+        <section class="card chart-card">
+            <div class="chart-header">
+                <div>
+                    <h2>Trend</h2>
+                    <small id="chartMeta"></small>
+                </div>
+                <div class="chart-actions">
+                    <button data-group="month" class="secondary chart-group-btn active">Months</button>
+                    <button data-group="season" class="secondary chart-group-btn">Seasons</button>
+                    <button data-group="annual" class="secondary chart-group-btn">Annual</button>
+                </div>
+            </div>
+            <canvas id="climateChart" height="240"></canvas>
+        </section>
+
+        <section class="card table-card">
+            <header>
+                <h2>Raw values</h2>
+                <small id="tableMeta"></small>
+            </header>
+            <div class="scroll-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Year</th>
+                            <th>Period</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recordsTableBody">
+                        <tr><td colspan="3">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <small>Met Office HadUK-Grid data &mdash; parsed, stored and visualised locally.</small>
+    </footer>
+
+    <script>
+        window.dashboardConfig = {
+            defaultRegion: "{{ default_region_code }}",
+            defaultParameter: "{{ default_parameter_code }}",
+            endpoints: {
+                records: "{% url 'weather:records-list' %}",
+                summary: "{% url 'weather:records-summary' %}",
+            }
+        };
+    </script>
+    <script src="{% static 'js/dashboard.js' %}" defer></script>
+</body>
+</html>
+
