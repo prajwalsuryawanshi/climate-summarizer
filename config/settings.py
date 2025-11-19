@@ -38,7 +38,8 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-change-me")
 DEBUG = os.getenv("DEBUG", "1") == "1"
 
 ALLOWED_HOSTS = ["*"]
-CSRF_TRUSTED_ORIGINS =["*"]
+csrf_origins = [origin.strip() for origin in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if origin.strip()]
+CSRF_TRUSTED_ORIGINS = csrf_origins
 
 
 # Application definition

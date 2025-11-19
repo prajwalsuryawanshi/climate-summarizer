@@ -84,6 +84,7 @@ DEBUG=1
 ALLOWED_HOSTS=localhost,127.0.0.1
 DATABASE_URL=postgres://user:pass@host:5432/db  # optional, falls back to SQLite
 DATABASE_SSL_REQUIRE=0                          # set to 1 only if your Postgres demands TLS
+CSRF_TRUSTED_ORIGINS=https://your-domain.com     # comma-separated, with scheme
 ```
 
 Then:
