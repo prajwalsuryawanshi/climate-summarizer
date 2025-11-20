@@ -5,6 +5,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DJANGO_SECRET_KEY=docker-secret \
     DEBUG=0
 
+ARG DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/dummy"
+ENV DATABASE_URL=${DATABASE_URL}
+
 WORKDIR /app
 
 RUN apt-get update \
