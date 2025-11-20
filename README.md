@@ -82,9 +82,15 @@ Edit `.env` (use simple words):
 DJANGO_SECRET_KEY=anything-secret
 DEBUG=1
 ALLOWED_HOSTS=localhost,127.0.0.1
-DATABASE_URL=postgres://user:pass@host:5432/db  # optional, falls back to SQLite
+DATABASE_URL=postgres://user:pass@host:5432/db  # required PostgreSQL DSN
 DATABASE_SSL_REQUIRE=0                          # set to 1 only if your Postgres demands TLS
 CSRF_TRUSTED_ORIGINS=https://your-domain.com     # comma-separated, with scheme
+```
+
+Make sure PostgreSQL is running and reachable at the host/port you provided. A quick local option:
+
+```
+docker run --name climate-db -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=climate -d postgres:15-alpine
 ```
 
 Then:

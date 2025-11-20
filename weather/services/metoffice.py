@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import logging
+import time
 from datetime import datetime
 from decimal import Decimal
 from pathlib import PurePosixPath
@@ -11,6 +12,7 @@ from urllib.parse import unquote, urlparse
 import pandas as pd
 import requests
 from django.conf import settings
+from django.db import OperationalError, close_old_connections
 from django.utils import timezone
 
 from weather.constants import ANNUAL_COLUMN, MONTH_COLUMNS, SEASON_COLUMNS
@@ -139,13 +141,34 @@ def persist_records(records: Iterable[ClimateRecord]) -> int:
     if not records:
         return 0
 
-    ClimateRecord.objects.bulk_create(
-        records,
-        batch_size=500,
-        update_conflicts=True,
-        unique_fields=["region", "parameter", "year", "period_type", "period"],
-        update_fields=["value", "source_last_updated", "fetched_at"],
-    )
+    attempts = max(1, getattr(settings, "DB_LOCK_RETRY_ATTEMPTS", 5))
+    delay = max(0.0, getattr(settings, "DB_LOCK_RETRY_DELAY", 0.5))
+
+    for attempt in range(1, attempts + 1):
+        try:
+            ClimateRecord.objects.bulk_create(
+                records,
+                batch_size=500,
+                update_conflicts=True,
+                unique_fields=["region", "parameter", "year", "period_type", "period"],
+                update_fields=["value", "source_last_updated", "fetched_at"],
+            )
+        except OperationalError as exc:
+            message = str(exc).lower()
+            if "locked" not in message or attempt == attempts:
+                raise
+            logger.warning(
+                "Database locked during bulk insert (attempt %s/%s). Retrying in %.2fs.",
+                attempt,
+                attempts,
+                delay,
+            )
+            close_old_connections()
+            if delay:
+                time.sleep(delay)
+            continue
+        break
+
     return len(records)
 
 

@@ -3,7 +3,8 @@ from pathlib import Path
 from unittest import mock
 
 from django.conf import settings
-from django.test import TestCase
+from django.db.utils import OperationalError
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -139,3 +140,28 @@ class DatasetIngestAPITests(TestCase):
         response = self.client.post(url, {"regions": ["does-not-exist"]}, format="json")
         self.assertEqual(response.status_code, 400)
         self.assertIn("regions", response.data)
+
+
+class PersistRecordsRetryTests(TestCase):
+    def setUp(self):
+        self.region = Region.objects.get(code="UK")
+        self.parameter = Parameter.objects.get(code="Tmax")
+
+    @override_settings(DB_LOCK_RETRY_ATTEMPTS=3, DB_LOCK_RETRY_DELAY=0)
+    @mock.patch("weather.services.metoffice.ClimateRecord.objects.bulk_create")
+    def test_persist_records_retries_on_locked_sqlite(self, bulk_create_mock):
+        record = ClimateRecord(
+            region=self.region,
+            parameter=self.parameter,
+            year=2024,
+            period_type=ClimateRecord.PeriodType.ANNUAL,
+            period="ann",
+            value=Decimal("12.34"),
+        )
+
+        bulk_create_mock.side_effect = [OperationalError("database is locked"), None]
+
+        saved = metoffice.persist_records([record])
+
+        self.assertEqual(saved, 1)
+        self.assertEqual(bulk_create_mock.call_count, 2)

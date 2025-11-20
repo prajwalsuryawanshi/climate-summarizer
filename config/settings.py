@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -91,22 +92,19 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 default_db_url = os.getenv("DATABASE_URL")
-if default_db_url:
-    ssl_require = env_bool("DATABASE_SSL_REQUIRE", default=False)
-    DATABASES = {
-        'default': dj_database_url.parse(
-            default_db_url,
-            conn_max_age=600,
-            ssl_require=ssl_require,
-        )
-    }
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
-    }
+if not default_db_url:
+    raise ImproperlyConfigured(
+        "DATABASE_URL must be set. This project only supports PostgreSQL connections."
+    )
+
+ssl_require = env_bool("DATABASE_SSL_REQUIRE", default=False)
+DATABASES = {
+    'default': dj_database_url.parse(
+        default_db_url,
+        conn_max_age=600,
+        ssl_require=ssl_require,
+    )
+}
 
 
 # Password validation
@@ -168,6 +166,10 @@ CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", CELERY_BROKER_URL)
 CELERY_TASK_DEFAULT_QUEUE = os.getenv("CELERY_TASK_DEFAULT_QUEUE", "default")
 CELERY_TASK_ALWAYS_EAGER = env_bool("CELERY_TASK_ALWAYS_EAGER", default=False)
 CELERY_TASK_EAGER_PROPAGATES = env_bool("CELERY_TASK_EAGER_PROPAGATES", default=True)
+
+# Database locking tolerances (useful for SQLite dev setups)
+DB_LOCK_RETRY_ATTEMPTS = int(os.getenv("DB_LOCK_RETRY_ATTEMPTS", "5"))
+DB_LOCK_RETRY_DELAY = float(os.getenv("DB_LOCK_RETRY_DELAY", "0.5"))
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
