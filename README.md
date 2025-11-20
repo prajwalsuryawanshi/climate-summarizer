@@ -107,13 +107,14 @@ Browse `http://127.0.0.1:8000` for the dashboard or call the APIs.
 
 ## 6. Running with Docker Compose
 
+Make sure `DATABASE_URL` points to your managed PostgreSQL instance (Render, Supabase, Azure, etc.) before starting the stack. You can export it locally or place it in a `.env` file that Docker Compose reads automatically.
+
 ```
 docker compose up --build
 ```
 
 What spins up:
 
-- `db` – Postgres 15, data stored in the `pgdata` volume.
 - `redis` – lightweight broker backing Celery.
 - `web` – Django dev server. It auto-runs migrations + collectstatic before starting.
 - `worker` – Runs migrations, optionally performs an immediate ingest, then launches `celery -A config worker`.
@@ -123,8 +124,8 @@ Environment dials:
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `DJANGO_SECRET_KEY` | docker-compose-secret | Change for real deployments. |
-| `DATABASE_URL` | postgres://postgres:postgres@db:5432/climate | Already points to the Compose DB. |
-| `DATABASE_SSL_REQUIRE` | 0 | Leave 0 for local containers. Set 1 if targeting a remote TLS-only DB. |
+| `DATABASE_URL` | *(required)* | External Postgres DSN (e.g. `postgres://user:pass@host:5432/db`). |
+| `DATABASE_SSL_REQUIRE` | 0 | Set to 1 only if your managed Postgres forces TLS. |
 | `CELERY_BROKER_URL` | redis://redis:6379/0 | Broker/result backend for Celery. |
 | `INGEST_REGIONS` | *(all)* | e.g. `UK SCOTLAND`. |
 | `INGEST_PARAMETERS` | *(all)* | e.g. `Tmax Rainfall`. |
@@ -134,7 +135,10 @@ Environment dials:
 Example (UK-only ingestion, two Celery workers):
 
 ```
-INGEST_REGIONS="UK" CELERY_CONCURRENCY=2 docker compose up worker
+DATABASE_URL="postgres://user:pass@host:5432/db" \
+INGEST_REGIONS="UK" \
+CELERY_CONCURRENCY=2 \
+docker compose up worker
 ```
 
 ---
