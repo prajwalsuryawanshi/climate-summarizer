@@ -3,8 +3,6 @@ set -e
 
 python manage.py migrate --noinput
 
-INTERVAL="${INGEST_INTERVAL:-21600}"
-
 build_command() {
   set -- python manage.py ingest_metoffice
 
@@ -19,20 +17,26 @@ build_command() {
   echo "$@"
 }
 
-run_ingest() {
+run_startup_ingest() {
+  if [ "${RUN_INITIAL_INGEST:-1}" != "1" ]; then
+    echo "[ingest-worker] Skipping startup ingestion."
+    return 0
+  fi
+
   COMMAND=$(build_command)
+  echo "[ingest-worker] Triggering startup ingestion..."
   # shellcheck disable=SC2086
-  sh -c "$COMMAND"
+  if sh -c "$COMMAND"; then
+    echo "[ingest-worker] Startup ingestion completed successfully."
+  else
+    echo "[ingest-worker] Startup ingestion failed." >&2
+  fi
 }
 
-while true; do
-  echo "[ingest-worker] Starting Met Office ingestion..."
-  if run_ingest; then
-    echo "[ingest-worker] Ingestion completed successfully."
-  else
-    echo "[ingest-worker] Ingestion failed (exit code $?)."
-  fi
-  echo "[ingest-worker] Sleeping for ${INTERVAL}s"
-  sleep "$INTERVAL"
-done
+run_startup_ingest
 
+CELERY_LOG_LEVEL=${CELERY_LOG_LEVEL:-info}
+CELERY_CONCURRENCY=${CELERY_CONCURRENCY:-1}
+
+echo "[ingest-worker] Starting Celery worker (loglevel=${CELERY_LOG_LEVEL}, concurrency=${CELERY_CONCURRENCY})"
+exec celery -A config worker --loglevel="$CELERY_LOG_LEVEL" --concurrency="$CELERY_CONCURRENCY"

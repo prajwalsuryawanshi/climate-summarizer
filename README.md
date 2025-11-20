@@ -17,7 +17,7 @@ This project downloads public UK Met Office summaries, saves them to your databa
 
 - **Ingestion engine** – parses Met Office `.txt` files into structured records.
 - **Data model** – regions, parameters, and climate records with timestamps.
-- **REST APIs** – rich filters, summary stats, plus an endpoint to ingest any dataset by URL.
+- **REST APIs** – rich filters, summary stats, synchronous dataset ingest and an async trigger endpoint.
 - **Dashboard** – one page that lets non-developers explore the data visually.
 - **Docker stack** – Postgres, Django web app, and a background worker in one command.
 - **Docs & tests** – so future teammates know how to run and extend it.
@@ -31,7 +31,7 @@ This project downloads public UK Met Office summaries, saves them to your databa
 | Django app | Models, APIs, admin, HTML | `weather/models.py`, `weather/api.py`, `templates/weather/dashboard.html` |
 | Services | Download + parse + bulk insert | `weather/services/metoffice.py` |
 | Commands | Manual ingestion entry point | `weather/management/commands/ingest_metoffice.py` |
-| Worker | Keeps database updated on a timer | `scripts/ingest_worker.sh`, `docker-compose.yml` |
+| Worker | Celery worker + Redis queue for scheduled/API ingests | `weather/tasks.py`, `scripts/ingest_worker.sh`, `docker-compose.yml` |
 | Frontend | Chart + filters + table | `static/js/dashboard.js`, `static/css/dashboard.css` |
 
 ---
@@ -61,8 +61,8 @@ This project downloads public UK Met Office summaries, saves them to your databa
 
 5. **Keep it fresh**  
    - Run `python manage.py ingest_metoffice ...` yourself.  
-   - Let the Docker worker run the command every X hours.  
-   - Or POST a dataset URL to `/api/ingest/` for a one-off import.
+   - Keep the Celery worker + Redis stack running; it handles scheduled or API-triggered jobs.  
+   - POST a dataset URL to `/api/ingest/` for a one-off import or call `/api/ingest/trigger/` to queue a background refresh.
 
 ---
 
@@ -108,8 +108,9 @@ docker compose up --build
 What spins up:
 
 - `db` – Postgres 15, data stored in the `pgdata` volume.
+- `redis` – lightweight broker backing Celery.
 - `web` – Django dev server. It auto-runs migrations + collectstatic before starting.
-- `worker` – Shell script that loops `python manage.py ingest_metoffice`.
+- `worker` – Runs migrations, optionally performs an immediate ingest, then launches `celery -A config worker`.
 
 Environment dials:
 
@@ -118,14 +119,16 @@ Environment dials:
 | `DJANGO_SECRET_KEY` | docker-compose-secret | Change for real deployments. |
 | `DATABASE_URL` | postgres://postgres:postgres@db:5432/climate | Already points to the Compose DB. |
 | `DATABASE_SSL_REQUIRE` | 0 | Leave 0 for local containers. Set 1 if targeting a remote TLS-only DB. |
-| `INGEST_INTERVAL` | 21600 (6h) | Worker sleep length in seconds. |
+| `CELERY_BROKER_URL` | redis://redis:6379/0 | Broker/result backend for Celery. |
 | `INGEST_REGIONS` | *(all)* | e.g. `UK SCOTLAND`. |
 | `INGEST_PARAMETERS` | *(all)* | e.g. `Tmax Rainfall`. |
+| `RUN_INITIAL_INGEST` | 1 | Set to 0 to skip the startup `ingest_metoffice` run. |
+| `CELERY_CONCURRENCY` | 1 | Number of worker processes.
 
-Example (hourly UK-only ingestion):
+Example (UK-only ingestion, two Celery workers):
 
 ```
-INGEST_INTERVAL=3600 INGEST_REGIONS="UK" docker compose up worker
+INGEST_REGIONS="UK" CELERY_CONCURRENCY=2 docker compose up worker
 ```
 
 ---
@@ -139,6 +142,7 @@ INGEST_INTERVAL=3600 INGEST_REGIONS="UK" docker compose up worker
 | `/api/records/` | GET | Fetch the actual climate numbers. Use filters. |
 | `/api/records/summary/` | GET | Quick stats (min, max, average, count, first year, last year). |
 | `/api/ingest/` | POST JSON `{ "url": "<met office txt>" }` | Ingest that exact dataset link immediately. |
+| `/api/ingest/trigger/` | POST JSON `{ "regions": [], "parameters": [] }` | Queue a Celery job that re-runs `ingest_metoffice` filters. |
 
 Filters supported on records + summary endpoints:
 
@@ -185,13 +189,12 @@ Reference data (regions & parameters) is seeded during migrations, so you can ca
 ## 10. Background worker (what it actually does)
 
 1. Runs `python manage.py migrate` (safety first).
-2. Builds the ingestion command using `INGEST_REGIONS`, `INGEST_PARAMETERS`, and `INGEST_INTERVAL`.
-3. Calls the command.
-4. Logs success or failure.
-5. Sleeps for the configured interval.
-6. Repeats forever.
+2. Optionally executes `python manage.py ingest_metoffice` once on boot using any filters supplied via `INGEST_*`.
+3. Launches `celery -A config worker` which:
+   - Listens on Redis for jobs coming from `/api/ingest/trigger/`, scheduled beats, or manual `.delay()` calls.
+   - Streams logs back to the container so you can tail progress.
 
-It is basically a hands-free cron job that keeps your database synced with Met Office updates.
+No more tight polling loop—the worker sits idle until a task arrives, then ingests the requested regions/parameters concurrently.
 
 ---
 
@@ -222,6 +225,7 @@ Coverage includes:
 - Parser & ingestion logic (mocked HTTP).
 - API filters and summary endpoint.
 - Dataset-ingest POST endpoint.
+- Celery trigger endpoint validation / task dispatch.
 
 ---
 
@@ -232,7 +236,7 @@ Coverage includes:
 | `server does not support SSL, but SSL was required` | Set `DATABASE_SSL_REQUIRE=0` when talking to the local Compose DB. |
 | `/api/ingest/` says “Unknown parameter/region” | Ensure the URL follows `.../<Parameter>/<order>/<Region>.txt` (e.g. `Tmax/date/UK.txt`). |
 | Dashboard shows “No data available” | Run ingestion or verify the worker logs. |
-| Worker restarts repeatedly | Check its environment vars; invalid region/parameter codes make the command exit with an error. |
+| Worker restarts repeatedly | Ensure Redis is reachable (`CELERY_BROKER_URL`) and `INGEST_*` filters are valid—tracebacks appear in the Celery logs. |
 | Large API calls are slow | Use pagination (`limit/offset`) or add caching/indices as next steps. |
 
 ---

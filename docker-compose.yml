@@ -12,9 +12,10 @@ services:
       DJANGO_SECRET_KEY: docker-compose-secret
       DEBUG: "1"
       DATABASE_URL: postgres://postgres:postgres@db:5432/climate
-      INGEST_INTERVAL: "21600"
+      CELERY_BROKER_URL: redis://redis:6379/0
     depends_on:
       - db
+      - redis
 
   worker:
     build: .
@@ -25,11 +26,14 @@ services:
       DJANGO_SECRET_KEY: docker-compose-secret
       DEBUG: "0"
       DATABASE_URL: postgres://postgres:postgres@db:5432/climate
-      INGEST_INTERVAL: ${INGEST_INTERVAL:-21600}
+      CELERY_BROKER_URL: redis://redis:6379/0
       INGEST_REGIONS: ${INGEST_REGIONS:-}
       INGEST_PARAMETERS: ${INGEST_PARAMETERS:-}
+      RUN_INITIAL_INGEST: ${RUN_INITIAL_INGEST:-1}
+      CELERY_CONCURRENCY: ${CELERY_CONCURRENCY:-1}
     depends_on:
       - db
+      - redis
 
   db:
     image: postgres:15-alpine
@@ -41,6 +45,11 @@ services:
       - "5434:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
 
 volumes:
   pgdata:

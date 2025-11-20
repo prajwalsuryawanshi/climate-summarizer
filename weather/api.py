@@ -9,10 +9,12 @@ from .models import ClimateRecord, Parameter, Region
 from .serializers import (
     ClimateRecordSerializer,
     IngestRequestSerializer,
+    IngestTriggerSerializer,
     ParameterSerializer,
     RegionSerializer,
 )
 from .services import metoffice
+from .tasks import ingest_metoffice_task
 
 
 class RegionViewSet(viewsets.ReadOnlyModelViewSet):
@@ -99,3 +101,25 @@ class DatasetIngestView(APIView):
             status=status.HTTP_202_ACCEPTED,
         )
 
+
+class DatasetIngestTriggerView(APIView):
+    """
+    Kick off a background ingestion job via Celery.
+    """
+
+    def post(self, request):
+        serializer = IngestTriggerSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        regions = serializer.validated_data.get("regions")
+        parameters = serializer.validated_data.get("parameters")
+
+        async_result = ingest_metoffice_task.delay(regions=regions, parameters=parameters)
+        return Response(
+            {
+                "message": "Ingestion enqueued.",
+                "task_id": async_result.id,
+                "regions": regions,
+                "parameters": parameters,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )

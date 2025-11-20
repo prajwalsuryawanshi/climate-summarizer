@@ -14,5 +14,6 @@ urlpatterns = [
     path("", views.DashboardView.as_view(), name="dashboard"),
     path("api/", include(router.urls)),
     path("api/ingest/", api.DatasetIngestView.as_view(), name="ingest"),
+    path("api/ingest/trigger/", api.DatasetIngestTriggerView.as_view(), name="ingest-trigger"),
 ]
 

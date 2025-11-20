@@ -121,3 +121,21 @@ class DatasetIngestAPITests(TestCase):
         response = self.client.post(url, {"url": "https://bad.example.com/data.txt"}, format="json")
         self.assertEqual(response.status_code, 400)
         self.assertIn("detail", response.data)
+
+    @mock.patch("weather.tasks.ingest_metoffice_task.delay")
+    def test_trigger_endpoint_enqueues_task(self, delay_mock):
+        fake_result = mock.Mock()
+        fake_result.id = "test-task-id"
+        delay_mock.return_value = fake_result
+        url = reverse("weather:ingest-trigger")
+        payload = {"regions": ["UK"], "parameters": ["Tmax"]}
+        response = self.client.post(url, payload, format="json")
+        self.assertEqual(response.status_code, 202)
+        delay_mock.assert_called_once_with(regions=["UK"], parameters=["Tmax"])
+        self.assertEqual(response.data["task_id"], "test-task-id")
+
+    def test_trigger_endpoint_validates_regions(self):
+        url = reverse("weather:ingest-trigger")
+        response = self.client.post(url, {"regions": ["does-not-exist"]}, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("regions", response.data)

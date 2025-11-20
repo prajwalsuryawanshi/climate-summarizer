@@ -41,3 +41,45 @@ class ClimateRecordSerializer(serializers.ModelSerializer):
 class IngestRequestSerializer(serializers.Serializer):
     url = serializers.URLField()
 
+
+class IngestTriggerSerializer(serializers.Serializer):
+    regions = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        allow_empty=False,
+    )
+    parameters = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        allow_empty=False,
+    )
+
+    @staticmethod
+    def _dedupe(values: list[str]) -> list[str]:
+        unique: list[str] = []
+        for value in values:
+            if value not in unique:
+                unique.append(value)
+        return unique
+
+    def _resolve_codes(self, model, values: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        missing: list[str] = []
+        for value in values:
+            try:
+                obj = model.objects.get(code__iexact=value)
+            except model.DoesNotExist:
+                missing.append(value)
+            else:
+                cleaned.append(obj.code)
+        if missing:
+            raise serializers.ValidationError(
+                f"Unknown {model.__name__.lower()} codes: {', '.join(missing)}"
+            )
+        return self._dedupe(cleaned)
+
+    def validate_regions(self, values: list[str]) -> list[str]:
+        return self._resolve_codes(Region, values)
+
+    def validate_parameters(self, values: list[str]) -> list[str]:
+        return self._resolve_codes(Parameter, values)
